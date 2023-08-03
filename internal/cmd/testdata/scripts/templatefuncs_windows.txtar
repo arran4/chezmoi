@@ -1,0 +1,9 @@
+[!windows] skip 'Windows only'
+
+# test lookPathIn template function to find in specified script - success
+exec chezmoi execute-template '{{ lookPathIn "winver" "c:\windows" }}'
+stdout ^/bin/echo
+
+# test lookPathIn template function to find in specified script - failure
+exec chezmoi execute-template '{{ lookPathIn "winver" "c:\users" }}'
+stdout ^$
