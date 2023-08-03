@@ -14,7 +14,7 @@ var pathExt []string = nil
 // findExecutableExtensions returns valid OS executable extensions for a given executable
 func findExecutableExtensions(path string) []string {
 	cmdExt := filepath.Ext(path)
-	if cmdExt != "" {
+	if cmdExt == "" {
 		return []string{path}
 	}
 	ext := getPathExt()
