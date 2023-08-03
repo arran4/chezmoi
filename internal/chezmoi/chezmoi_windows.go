@@ -14,13 +14,14 @@ var pathExt []string = nil
 // findExecutableExtensions returns valid OS executable extensions for a given executable
 func findExecutableExtensions(path string) []string {
 	cmdExt := filepath.Ext(path)
-	if cmdExt == "" {
+	if cmdExt != "" {
 		return []string{path}
 	}
-	ext := getPathExt()
-	result := make([]string, len(ext))
-	for i, e := range ext {
-		result[i] = strings.TrimSuffix(path, cmdExt) + e
+	exts := getPathExt()
+	result := make([]string, len(exts))
+	withoutSuffix := strings.TrimSuffix(path, cmdExt)
+	for i, ext := range exts {
+		result[i] = withoutSuffix + ext
 	}
 	return result
 }
