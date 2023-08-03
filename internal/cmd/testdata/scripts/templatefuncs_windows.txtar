@@ -1,13 +1,13 @@
 [!windows] skip 'Windows only'
 
 # test lookPathIn template function to find in specified script - success without extension
-exec chezmoi execute-template '{{ lookPathIn "winver" "C:\Windows\System32" }}'
+exec chezmoi execute-template '{{ lookPathIn "winver" "C:\\Windows\\System32" }}'
 stdout ^c:\windows\winver.exe$
 
 # test lookPathIn template function to find in specified script - success with extension
-exec chezmoi execute-template '{{ lookPathIn "winver.exe" "C:\Windows\System32" }}'
+exec chezmoi execute-template '{{ lookPathIn "winver.exe" "C:\\Windows\\System32" }}'
 stdout ^c:\windows\winver.exe$
 
 # test lookPathIn template function to find in specified script - failure
-exec chezmoi execute-template '{{ lookPathIn "winver" "c:\users" }}'
+exec chezmoi execute-template '{{ lookPathIn "winver" "c:\\users" }}'
 stdout ^$
