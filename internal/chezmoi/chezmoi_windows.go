@@ -20,7 +20,7 @@ func findExecutableExtensions(path string) []string {
 	ext := getPathExt()
 	result := make([]string, len(ext))
 	for i, e := range ext {
-		result[i] = path + e
+		result[i] = strings.TrimSuffix(path, cmdExt) + e
 	}
 	return result
 }
