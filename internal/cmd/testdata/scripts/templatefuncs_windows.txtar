@@ -1,13 +1,13 @@
 [!windows] skip 'Windows only'
 
 # test lookPathIn template function to find in specified script - success with extension
-exec chezmoi execute-template '{{ lookPathIn "winver.exe" "C:\\Windows\\System32" }}'
-stdout ^c:\\Windows\\winver.exe$
+exec chezmoi execute-template '{{ lookPathIn "powershell.exe""c:\\windows\\system32;c:\\windows\\system64;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0" }}'
+stdout ^C:\\WINDOWS\\System32\\WindowsPowerShell\\v1\.0\\powershell.exe$
 
 # test lookPathIn template function to find in specified script - success without extension
-exec chezmoi execute-template '{{ lookPathIn "winver" "C:\\Windows\\System32" }}'
-stdout ^c:\\Windows\\winver.exe$
+exec chezmoi execute-template '{{ lookPathIn "powershell" "c:\\windows\\system32;c:\\windows\\system64;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0" }}'
+stdout ^C:\\WINDOWS\\System32\\WindowsPowerShell\\v1\.0\\powershell.exe$
 
 # test lookPathIn template function to find in specified script - failure
-exec chezmoi execute-template '{{ lookPathIn "winver" "c:\\users" }}'
+exec chezmoi execute-template '{{ lookPathIn "weakshell" "c:\\windows\\system32;c:\\windows\\system64;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0" }}'
 stdout ^$
