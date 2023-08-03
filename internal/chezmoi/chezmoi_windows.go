@@ -17,8 +17,9 @@ func findExecutableExtensions(path string) []string {
 	if cmdExt != "" {
 		return []string{path}
 	}
-	result := make([]string, len(cmdExt))
-	for i, e := range getPathExt() {
+	ext := getPathExt()
+	result := make([]string, len(ext))
+	for i, e := range ext {
 		result[i] = path + e
 	}
 	return result
