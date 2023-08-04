@@ -1,4 +1,4 @@
-//go:build !windows && !darwin
+//go:build darwin
 
 package chezmoi
 
@@ -16,13 +16,6 @@ func TestLookPathIn(t *testing.T) {
 			name:    "Finds first",
 			file:    "sh",
 			paths:   "/usr/bin:/bin",
-			want:    "/usr/bin/sh",
-			wantErr: false,
-		},
-		{
-			name:    "Finds first 2",
-			file:    "sh",
-			paths:   "/bin:/usr/bin",
 			want:    "/bin/sh",
 			wantErr: false,
 		},
