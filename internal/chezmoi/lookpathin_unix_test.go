@@ -2,7 +2,10 @@
 
 package chezmoi
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestLookPathIn(t *testing.T) {
 	tests := []struct {
