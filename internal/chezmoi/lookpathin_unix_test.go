@@ -29,6 +29,11 @@ func TestLookPathIn(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.want != "" {
+				if _, err := os.Stat(tt.want); err != nil {
+					t.Skip("Alpine doesn't have a symlink for sh")
+				}
+			}
 			got, err := LookPathIn(tt.file, tt.paths)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("LookPathIn() error = %v, wantErr %v", err, tt.wantErr)
