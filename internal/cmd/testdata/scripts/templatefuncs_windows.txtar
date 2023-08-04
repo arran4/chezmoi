@@ -2,12 +2,12 @@
 
 # test lookPathIn template function to find in specified script - success with extension
 exec chezmoi execute-template '{{ lookPathIn "git.exe" "c:\\windows\\system32;c:\\windows\\system64;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files\\Git\\cmd" }}'
-stdout ^C:\\Program Files\\Git\\cmd\\git.exe$
+stdout '^C:\\Program Files\\Git\\cmd\\git.exe$'
 
 # test lookPathIn template function to find in specified script - success without extension
 exec chezmoi execute-template '{{ lookPathIn "git" "c:\\windows\\system32;c:\\windows\\system64;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files\\Git\\cmd" }}'
-stdout ^C:\\Program Files\\Git\\cmd\\git.exe$
+stdout '^C:\\Program Files\\Git\\cmd\\git.exe$'
 
 # test lookPathIn template function to find in specified script - failure
 exec chezmoi execute-template '{{ lookPathIn "asdf" "c:\\windows\\system32;c:\\windows\\system64;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files\\Git\\cmd" }}'
-stdout ^$
+stdout '^$'
