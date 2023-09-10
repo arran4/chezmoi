@@ -15,8 +15,13 @@ func init() {
 	unix.Umask(int(Umask))
 }
 
-// isExecutable returns if fileInfo is executable.
-func isExecutable(fileInfo fs.FileInfo) bool {
+// findExecutableExtensions returns valid OS executable extensions, on unix it can be anything.
+func findExecutableExtensions(path string) []string {
+	return []string{path}
+}
+
+// IsExecutable returns if fileInfo is executable.
+func IsExecutable(fileInfo fs.FileInfo) bool {
 	return fileInfo.Mode().Perm()&0o111 != 0
 }
 

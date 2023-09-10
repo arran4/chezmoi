@@ -27,13 +27,13 @@ import (
 	"time"
 
 	"github.com/coreos/go-semver/semver"
+	"github.com/mitchellh/copystructure"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	vfs "github.com/twpayne/go-vfs/v4"
-	"go.uber.org/multierr"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 
+	"github.com/twpayne/chezmoi/v2/internal/chezmoierrors"
 	"github.com/twpayne/chezmoi/v2/internal/chezmoilog"
 )
 
@@ -114,6 +114,7 @@ type SourceState struct {
 	defaultTemplateDataFunc func() map[string]any
 	templateDataOnly        bool
 	readTemplateData        bool
+	defaultTemplateData     map[string]any
 	userTemplateData        map[string]any
 	priorityTemplateData    map[string]any
 	scriptEnv               []string
@@ -297,6 +298,7 @@ type ReplaceFunc func(targetRelPath RelPath, newSourceStateEntry, oldSourceState
 
 // AddOptions are options to SourceState.Add.
 type AddOptions struct {
+	AutoTemplate      bool             // Automatically create templates, if possible.
 	Create            bool             // Add create_ entries instead of normal entries.
 	Encrypt           bool             // Encrypt files.
 	EncryptedSuffix   string           // Suffix for encrypted files.
@@ -403,7 +405,7 @@ DEST_ABS_PATH:
 
 		if options.PreAddFunc != nil {
 			switch err := options.PreAddFunc(targetRelPath); {
-			case errors.Is(err, Skip):
+			case errors.Is(err, fs.SkipDir):
 				continue DEST_ABS_PATH
 			case err != nil:
 				return err
@@ -427,7 +429,7 @@ DEST_ABS_PATH:
 			if !oldSourceEntryRelPath.Empty() && oldSourceEntryRelPath != sourceEntryRelPath {
 				if options.ReplaceFunc != nil {
 					switch err := options.ReplaceFunc(targetRelPath, newSourceStateEntry, oldSourceStateEntry); {
-					case errors.Is(err, Skip):
+					case errors.Is(err, fs.SkipDir):
 						continue DEST_ABS_PATH
 					case err != nil:
 						return err
@@ -743,6 +745,7 @@ func (s *SourceState) Encryption() Encryption {
 // ExecuteTemplateDataOptions are options to SourceState.ExecuteTemplateData.
 type ExecuteTemplateDataOptions struct {
 	Name            string
+	Destination     string
 	Data            []byte
 	TemplateOptions TemplateOptions
 }
@@ -764,11 +767,11 @@ func (s *SourceState) ExecuteTemplateData(options ExecuteTemplateDataOptions) ([
 		}
 	}
 
-	// Temporarily set .chezmoi.sourceFile to the name of the template.
+	// Set .chezmoi.sourceFile to the name of the template.
 	templateData := s.TemplateData()
 	if chezmoiTemplateData, ok := templateData["chezmoi"].(map[string]any); ok {
 		chezmoiTemplateData["sourceFile"] = options.Name
-		defer delete(chezmoiTemplateData, "sourceFile")
+		chezmoiTemplateData["targetFile"] = options.Destination
 	}
 
 	return tmpl.Execute(templateData)
@@ -926,7 +929,7 @@ func (s *SourceState) Read(ctx context.Context, options *ReadOptions) error {
 			if err := s.addTemplateDataDir(sourceAbsPath, fileInfo); err != nil {
 				return err
 			}
-			return vfs.SkipDir
+			return fs.SkipDir
 		case isPrefixDotFormat(fileInfo.Name(), dataName):
 			if !s.readTemplateData {
 				return nil
@@ -936,7 +939,7 @@ func (s *SourceState) Read(ctx context.Context, options *ReadOptions) error {
 			if err := s.addTemplatesDir(ctx, sourceAbsPath); err != nil {
 				return err
 			}
-			return vfs.SkipDir
+			return fs.SkipDir
 		case s.templateDataOnly:
 			return nil
 		case isPrefixDotFormat(fileInfo.Name(), externalName) || isPrefixDotFormatDotTmpl(fileInfo.Name(), externalName):
@@ -946,7 +949,7 @@ func (s *SourceState) Read(ctx context.Context, options *ReadOptions) error {
 			if err := s.addExternalDir(ctx, sourceAbsPath); err != nil {
 				return err
 			}
-			return vfs.SkipDir
+			return fs.SkipDir
 		case fileInfo.Name() == ignoreName || fileInfo.Name() == ignoreName+TemplateSuffix:
 			return s.addPatterns(s.ignore, sourceAbsPath, parentSourceRelPath)
 		case fileInfo.Name() == removeName || fileInfo.Name() == removeName+TemplateSuffix:
@@ -959,14 +962,14 @@ func (s *SourceState) Read(ctx context.Context, options *ReadOptions) error {
 			for relPath, scriptSourceStateEntries := range scriptsDirSourceStateEntries {
 				addSourceStateEntries(relPath, scriptSourceStateEntries...)
 			}
-			return vfs.SkipDir
+			return fs.SkipDir
 		case fileInfo.Name() == VersionName:
 			return s.readVersionFile(sourceAbsPath)
 		case strings.HasPrefix(fileInfo.Name(), Prefix):
 			fallthrough
 		case strings.HasPrefix(fileInfo.Name(), ignorePrefix):
 			if fileInfo.IsDir() {
-				return vfs.SkipDir
+				return fs.SkipDir
 			}
 			return nil
 		case fileInfo.IsDir():
@@ -975,7 +978,7 @@ func (s *SourceState) Read(ctx context.Context, options *ReadOptions) error {
 				TargetRelPath(s.encryption.EncryptedSuffix()).
 				JoinString(da.TargetName)
 			if s.Ignore(targetRelPath) {
-				return vfs.SkipDir
+				return fs.SkipDir
 			}
 			sourceStateDir := s.newSourceStateDir(sourceAbsPath, sourceRelPath, da)
 			addSourceStateEntries(targetRelPath, sourceStateDir)
@@ -1223,6 +1226,7 @@ func (s *SourceState) Read(ctx context.Context, options *ReadOptions) error {
 		targetRelPaths = append(targetRelPaths, targetRelPath)
 	}
 	sort.Sort(targetRelPaths)
+	errs := make([]error, 0, len(targetRelPaths))
 	for _, targetRelPath := range targetRelPaths {
 		sourceStateEntries := allSourceStateEntries[targetRelPath]
 		if len(sourceStateEntries) == 1 {
@@ -1239,13 +1243,13 @@ func (s *SourceState) Read(ctx context.Context, options *ReadOptions) error {
 			origins = append(origins, sourceStateEntry.Origin().OriginString())
 		}
 		sort.Strings(origins)
-		err = multierr.Append(err, &inconsistentStateError{
+		errs = append(errs, &inconsistentStateError{
 			targetRelPath: targetRelPath,
 			origins:       origins,
 		})
 	}
-	if err != nil {
-		return err
+	if len(errs) != 0 {
+		return errors.Join(errs...)
 	}
 
 	// Populate s.Entries with the unique source entry for each target.
@@ -1278,18 +1282,26 @@ func (s *SourceState) TargetRelPaths() []RelPath {
 	return targetRelPaths
 }
 
-// TemplateData returns s's template data.
+// TemplateData returns a copy of s's template data.
 func (s *SourceState) TemplateData() map[string]any {
+	s.Lock()
+	defer s.Unlock()
+
 	if s.templateData == nil {
 		s.templateData = make(map[string]any)
 		if s.defaultTemplateDataFunc != nil {
-			RecursiveMerge(s.templateData, s.defaultTemplateDataFunc())
+			s.defaultTemplateData = s.defaultTemplateDataFunc()
 			s.defaultTemplateDataFunc = nil
 		}
+		RecursiveMerge(s.templateData, s.defaultTemplateData)
 		RecursiveMerge(s.templateData, s.userTemplateData)
 		RecursiveMerge(s.templateData, s.priorityTemplateData)
 	}
-	return s.templateData
+	templateData, err := copystructure.Copy(s.templateData)
+	if err != nil {
+		panic(err)
+	}
+	return templateData.(map[string]any) //nolint:forcetypeassert
 }
 
 // addExternal adds external source entries to s.
@@ -1345,7 +1357,7 @@ func (s *SourceState) addExternalDir(ctx context.Context, externalsDirAbsPath Ab
 			return fmt.Errorf("%s: not allowed in %s directory", externalAbsPath, externalsDirName)
 		case strings.HasPrefix(fileInfo.Name(), ignorePrefix):
 			if fileInfo.IsDir() {
-				return vfs.SkipDir
+				return fs.SkipDir
 			}
 			return nil
 		case fileInfo.Mode().IsRegular():
@@ -1390,7 +1402,7 @@ func (s *SourceState) addPatterns(
 			continue
 		}
 		include := patternSetInclude
-		text, ok := CutPrefix(text, "!")
+		text, ok := strings.CutPrefix(text, "!")
 		if ok {
 			include = patternSetExclude
 		}
@@ -1421,6 +1433,9 @@ func (s *SourceState) addTemplateData(sourceAbsPath AbsPath) error {
 	}
 	s.Lock()
 	RecursiveMerge(s.userTemplateData, templateData)
+	// Clear the cached template data, as the change to the user template data
+	// means that the cached value is now invalid.
+	s.templateData = nil
 	s.Unlock()
 	return nil
 }
@@ -1441,7 +1456,7 @@ func (s *SourceState) addTemplateDataDir(sourceAbsPath AbsPath, fileInfo fs.File
 			return fmt.Errorf("%s: not allowed in %s directory", dataAbsPath, dataName)
 		case strings.HasPrefix(fileInfo.Name(), ignorePrefix):
 			if fileInfo.IsDir() {
-				return vfs.SkipDir
+				return fs.SkipDir
 			}
 			return nil
 		case fileInfo.Mode().IsRegular():
@@ -1474,7 +1489,7 @@ func (s *SourceState) addTemplatesDir(ctx context.Context, templatesDirAbsPath A
 			return fmt.Errorf("%s: not allowed in %s directory", templateAbsPath, TemplatesDirName)
 		case strings.HasPrefix(fileInfo.Name(), ignorePrefix):
 			if fileInfo.IsDir() {
-				return vfs.SkipDir
+				return fs.SkipDir
 			}
 			return nil
 		case fileInfo.Mode().IsRegular():
@@ -1604,16 +1619,18 @@ func (s *SourceState) getExternalData(
 		return nil, err
 	}
 
+	var errs []error
+
 	if external.Checksum.Size != 0 {
 		if len(data) != external.Checksum.Size {
-			err = multierr.Append(err, fmt.Errorf("size mismatch: expected %d, got %d",
+			errs = append(errs, fmt.Errorf("size mismatch: expected %d, got %d",
 				external.Checksum.Size, len(data)))
 		}
 	}
 
 	if external.Checksum.MD5 != nil {
 		if gotMD5Sum := md5Sum(data); !bytes.Equal(gotMD5Sum, external.Checksum.MD5) {
-			err = multierr.Append(err, fmt.Errorf("MD5 mismatch: expected %s, got %s",
+			errs = append(errs, fmt.Errorf("MD5 mismatch: expected %s, got %s",
 				external.Checksum.MD5, hex.EncodeToString(gotMD5Sum)))
 		}
 	}
@@ -1623,41 +1640,41 @@ func (s *SourceState) getExternalData(
 			gotRIPEMD160Sum,
 			external.Checksum.RIPEMD160,
 		) {
-			err = multierr.Append(err, fmt.Errorf("RIPEMD-160 mismatch: expected %s, got %s",
+			errs = append(errs, fmt.Errorf("RIPEMD-160 mismatch: expected %s, got %s",
 				external.Checksum.RIPEMD160, hex.EncodeToString(gotRIPEMD160Sum)))
 		}
 	}
 
 	if external.Checksum.SHA1 != nil {
 		if gotSHA1Sum := sha1Sum(data); !bytes.Equal(gotSHA1Sum, external.Checksum.SHA1) {
-			err = multierr.Append(err, fmt.Errorf("SHA1 mismatch: expected %s, got %s",
+			errs = append(errs, fmt.Errorf("SHA1 mismatch: expected %s, got %s",
 				external.Checksum.SHA1, hex.EncodeToString(gotSHA1Sum)))
 		}
 	}
 
 	if external.Checksum.SHA256 != nil {
 		if gotSHA256Sum := SHA256Sum(data); !bytes.Equal(gotSHA256Sum, external.Checksum.SHA256) {
-			err = multierr.Append(err, fmt.Errorf("SHA256 mismatch: expected %s, got %s",
+			errs = append(errs, fmt.Errorf("SHA256 mismatch: expected %s, got %s",
 				external.Checksum.SHA256, hex.EncodeToString(gotSHA256Sum)))
 		}
 	}
 
 	if external.Checksum.SHA384 != nil {
 		if gotSHA384Sum := sha384Sum(data); !bytes.Equal(gotSHA384Sum, external.Checksum.SHA384) {
-			err = multierr.Append(err, fmt.Errorf("SHA384 mismatch: expected %s, got %s",
+			errs = append(errs, fmt.Errorf("SHA384 mismatch: expected %s, got %s",
 				external.Checksum.SHA384, hex.EncodeToString(gotSHA384Sum)))
 		}
 	}
 
 	if external.Checksum.SHA512 != nil {
 		if gotSHA512Sum := sha512Sum(data); !bytes.Equal(gotSHA512Sum, external.Checksum.SHA512) {
-			err = multierr.Append(err, fmt.Errorf("SHA512 mismatch: expected %s, got %s",
+			errs = append(errs, fmt.Errorf("SHA512 mismatch: expected %s, got %s",
 				external.Checksum.SHA512, hex.EncodeToString(gotSHA512Sum)))
 		}
 	}
 
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", externalRelPath, err)
+	if len(errs) != 0 {
+		return nil, fmt.Errorf("%s: %w", externalRelPath, errors.Join(errs...))
 	}
 
 	if external.Encrypted {
@@ -1716,8 +1733,9 @@ func (s *SourceState) newCreateTargetStateEntryFunc(
 				}
 				if fileAttr.Template {
 					contents, err = s.ExecuteTemplateData(ExecuteTemplateDataOptions{
-						Name: sourceRelPath.String(),
-						Data: contents,
+						Name:        sourceRelPath.String(),
+						Data:        contents,
+						Destination: destAbsPath.String(),
 					})
 					if err != nil {
 						return nil, err
@@ -1773,8 +1791,9 @@ func (s *SourceState) newFileTargetStateEntryFunc(
 			}
 			if fileAttr.Template {
 				contents, err = s.ExecuteTemplateData(ExecuteTemplateDataOptions{
-					Name: sourceRelPath.String(),
-					Data: contents,
+					Name:        sourceRelPath.String(),
+					Data:        contents,
+					Destination: destAbsPath.String(),
 				})
 				if err != nil {
 					return nil, err
@@ -1819,8 +1838,9 @@ func (s *SourceState) newModifyTargetStateEntryFunc(
 			}
 			if fileAttr.Template {
 				modifierContents, err = s.ExecuteTemplateData(ExecuteTemplateDataOptions{
-					Name: sourceRelPath.String(),
-					Data: modifierContents,
+					Name:        sourceRelPath.String(),
+					Data:        modifierContents,
+					Destination: destAbsPath.String(),
 				})
 				if err != nil {
 					return
@@ -1857,10 +1877,6 @@ func (s *SourceState) newModifyTargetStateEntryFunc(
 				if chezmoiTemplateData, ok := templateData["chezmoi"].(map[string]any); ok {
 					chezmoiTemplateData["stdin"] = string(currentContents)
 					chezmoiTemplateData["sourceFile"] = sourceFile
-					defer func() {
-						delete(chezmoiTemplateData, "stdin")
-						delete(chezmoiTemplateData, "sourceFile")
-					}()
 				}
 
 				contents, err = tmpl.Execute(templateData)
@@ -1872,17 +1888,16 @@ func (s *SourceState) newModifyTargetStateEntryFunc(
 			if tempFile, err = os.CreateTemp("", "*."+fileAttr.TargetName); err != nil {
 				return
 			}
-			defer func() {
-				err = multierr.Append(err, os.RemoveAll(tempFile.Name()))
-			}()
+			defer chezmoierrors.CombineFunc(&err, func() error {
+				return os.RemoveAll(tempFile.Name())
+			})
 			if runtime.GOOS != "windows" {
 				if err = tempFile.Chmod(0o700); err != nil {
 					return
 				}
 			}
 			_, err = tempFile.Write(modifierContents)
-			multierr.AppendInvoke(&err, multierr.Close(tempFile))
-			if err != nil {
+			if chezmoierrors.CombineFunc(&err, tempFile.Close); err != nil {
 				return
 			}
 
@@ -1929,8 +1944,9 @@ func (s *SourceState) newScriptTargetStateEntryFunc(
 			}
 			if fileAttr.Template {
 				contents, err = s.ExecuteTemplateData(ExecuteTemplateDataOptions{
-					Name: sourceRelPath.String(),
-					Data: contents,
+					Name:        sourceRelPath.String(),
+					Data:        contents,
+					Destination: destAbsPath.String(),
 				})
 				if err != nil {
 					return nil, err
@@ -1963,8 +1979,9 @@ func (s *SourceState) newSymlinkTargetStateEntryFunc(
 			}
 			if fileAttr.Template {
 				linknameBytes, err = s.ExecuteTemplateData(ExecuteTemplateDataOptions{
-					Name: sourceRelPath.String(),
-					Data: linknameBytes,
+					Name:        sourceRelPath.String(),
+					Data:        linknameBytes,
+					Destination: destAbsPath.String(),
 				})
 				if err != nil {
 					return "", err
@@ -2092,7 +2109,7 @@ func (s *SourceState) newSourceStateFileEntryFromFile(
 	fileAttr := FileAttr{
 		TargetName: fileInfo.Name(),
 		Encrypted:  options.Encrypt,
-		Executable: isExecutable(fileInfo),
+		Executable: IsExecutable(fileInfo),
 		Private:    isPrivate(fileInfo),
 		ReadOnly:   isReadOnly(fileInfo),
 		Template:   options.Template,
@@ -2105,6 +2122,13 @@ func (s *SourceState) newSourceStateFileEntryFromFile(
 	contents, err := actualStateFile.Contents()
 	if err != nil {
 		return nil, err
+	}
+	if options.AutoTemplate {
+		var replacements bool
+		contents, replacements = autoTemplate(contents, s.TemplateData())
+		if replacements {
+			fileAttr.Template = true
+		}
 	}
 	if len(contents) == 0 {
 		fileAttr.Empty = true
@@ -2145,6 +2169,8 @@ func (s *SourceState) newSourceStateFileEntryFromSymlink(
 	contents := []byte(linkname)
 	template := false
 	switch {
+	case options.AutoTemplate:
+		contents, template = autoTemplate(contents, s.TemplateData())
 	case options.Template:
 		template = true
 	case !options.Template && options.TemplateSymlinks:
@@ -2316,7 +2342,7 @@ func (s *SourceState) readExternalArchive(
 				TargetName: fileInfo.Name(),
 				Type:       SourceFileTypeFile,
 				Empty:      fileInfo.Size() == 0,
-				Executable: isExecutable(fileInfo),
+				Executable: IsExecutable(fileInfo),
 				Private:    isPrivate(fileInfo),
 				ReadOnly:   isReadOnly(fileInfo),
 			}
@@ -2448,7 +2474,7 @@ func (s *SourceState) readExternalArchiveFile(
 				TargetName: fileInfo.Name(),
 				Type:       SourceFileTypeFile,
 				Empty:      fileInfo.Size() == 0,
-				Executable: isExecutable(fileInfo) || external.Executable,
+				Executable: IsExecutable(fileInfo) || external.Executable,
 				Private:    isPrivate(fileInfo),
 				ReadOnly:   isReadOnly(fileInfo),
 			}
@@ -2468,7 +2494,7 @@ func (s *SourceState) readExternalArchiveFile(
 				sourceRelPath:    sourceRelPath,
 				targetStateEntry: targetStateEntry,
 			}
-			return Break
+			return fs.SkipAll
 		case fileInfo.Mode()&fs.ModeType == fs.ModeSymlink:
 			fileAttr := FileAttr{
 				TargetName: fileInfo.Name(),
@@ -2487,7 +2513,7 @@ func (s *SourceState) readExternalArchiveFile(
 				sourceRelPath:    sourceRelPath,
 				targetStateEntry: targetStateEntry,
 			}
-			return Break
+			return fs.SkipAll
 		default:
 			return fmt.Errorf("%s: unsupported mode %o", name, fileInfo.Mode()&fs.ModeType)
 		}
@@ -2530,7 +2556,7 @@ func (s *SourceState) readExternalDir(
 				TargetName: fileInfo.Name(),
 				Type:       SourceFileTypeFile,
 				Empty:      true,
-				Executable: isExecutable(fileInfo),
+				Executable: IsExecutable(fileInfo),
 				Private:    isPrivate(fileInfo),
 				ReadOnly:   isReadOnly(fileInfo),
 			}
@@ -2681,7 +2707,7 @@ func (s *SourceState) readScriptsDir(
 			return fmt.Errorf("%s: not allowed in %s directory", sourceAbsPath, scriptsDirName)
 		case strings.HasPrefix(fileInfo.Name(), ignorePrefix):
 			if fileInfo.IsDir() {
-				return vfs.SkipDir
+				return fs.SkipDir
 			}
 			return nil
 		case fileInfo.IsDir():

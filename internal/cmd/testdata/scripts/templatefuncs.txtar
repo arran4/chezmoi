@@ -1,6 +1,7 @@
 [!windows] chmod 755 bin/chezmoi-output-test
 [!windows] chmod 755 bin/generate-color-formats
 [!windows] chmod 755 bin/ioreg
+[!windows] chmod 755 bin/executable
 [windows] unix2dos bin/chezmoi-output-test.cmd
 
 symlink $HOME/symlink -> dir
@@ -67,6 +68,43 @@ stdout a${/}b
 # test jq template function
 exec chezmoi execute-template '{{ dict "key" "value" | jq ".key" | first }}'
 stdout ^value$
+
+# test isExecutable template function positive test case
+[!windows] exec chezmoi execute-template '{{ isExecutable "bin/executable" }}'
+[windows] exec chezmoi execute-template '{{ isExecutable "bin/executable.cmd" }}'
+stdout ^true$
+
+# test isExecutable template function negative test case
+exec chezmoi execute-template '{{ isExecutable "bin/not-executable" }}'
+stdout ^false$
+
+# test findExecutable template function to find in specified script varargs - success
+[!windows] exec chezmoi execute-template '{{ findExecutable "echo"  "/lib" "/bin" "/usr/bin" }}'
+[!windows] stdout ^/bin/echo$
+
+# test findExecutable template function to find in specified script varargs - failure
+[!windows] exec chezmoi execute-template '{{ findExecutable "echo" "/lib" }}'
+[!windows] stdout ^$
+
+# test findExecutable template function to find in specified script - success
+[!windows] exec chezmoi execute-template '{{ findExecutable "echo" (list "/lib" "/bin" "/usr/bin") }}'
+[!windows] stdout ^/bin/echo$
+
+# test findExecutable template function to find in specified script - failure
+[!windows] exec chezmoi execute-template '{{ findExecutable "echo" (list "/lib") }}'
+[!windows] stdout ^$
+
+# test findExecutable template function to find in specified script - success with extension
+[windows] exec chezmoi execute-template '{{ findExecutable "git.exe" "c:\\windows\\system32" "c:\\windows\\system64" "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0" "C:\\Program Files\\Git\\cmd" }}'
+[windows] stdout 'git'
+
+# test findExecutable template function to find in specified script - success without extension
+[windows] exec chezmoi execute-template '{{ findExecutable "git" "c:\\windows\\system32" "c:\\windows\\system64" "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0" "C:\\Program Files\\Git\\cmd" }}'
+[windows] stdout 'git'
+
+# test findExecutable template function to find in specified script - failure
+[windows] exec chezmoi execute-template '{{ findExecutable "asdf" "c:\\windows\\system32" "c:\\windows\\system64" "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0" "C:\\Program Files\\Git\\cmd" }}'
+[windows] stdout '^$'
 
 # test lookPath template function to find in PATH
 exec chezmoi execute-template '{{ lookPath "go" }}'
@@ -152,6 +190,9 @@ set out=%*
 set out=%out:\=%
 echo %out%
 endlocal
+-- bin/executable --
+#!/bin/sh
+-- bin/executable.cmd --
 -- bin/generate-color-formats --
 #!/bin/sh
 
@@ -194,6 +235,7 @@ echo '        <key>IOKitBuildVersion</key>'
 echo '        <string>Darwin Kernel Version 21.1.0: Wed Oct 13 17:33:24 PDT 2021; root:xnu-8019.41.5~1/RELEASE_ARM64_T8101</string>'
 echo '</dict>'
 echo '</plist>'
+-- bin/not-executable --
 -- golden/comment --
 # line1
 # line2
