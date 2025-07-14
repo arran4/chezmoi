@@ -163,6 +163,8 @@ nav:
     - edit: reference/commands/edit.md
     - edit-config: reference/commands/edit-config.md
     - edit-config-template: reference/commands/edit-config-template.md
+    - edit-template: reference/commands/edit-template.md
+    - edit-ignore: reference/commands/edit-ignore.md
     - encrypt: reference/commands/encrypt.md
     - execute-template: reference/commands/execute-template.md
     - forget: reference/commands/forget.md

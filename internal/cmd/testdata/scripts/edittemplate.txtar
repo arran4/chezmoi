@@ -1,0 +1,7 @@
+# Test that edit-ignore fails to create if -m is missing
+! exec chezmoi edit-template test.tmpl
+
+# test that edit-template edits test.tmpl in the chezmoi config directory
+exec chezmoi edit-template -m test.tmpl
+grep -count=1 '# edited' $CHEZMOISOURCEDIR/.chezmoitemplates/test.tmpl
+

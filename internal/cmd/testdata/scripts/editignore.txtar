@@ -1,0 +1,23 @@
+exec chezmoi apply
+
+# test that edit-ignore doesn't create with out the -m flag
+! exec chezmoi edit-ignore
+
+# test that edit-ignore edits chezmoiignore in the chezmoi config directory
+exec chezmoi edit-ignore -m
+grep -count=1 '# edited' $CHEZMOISOURCEDIR/.chezmoiignore
+
+# test that edit-ignore edits chezmoiignore and doesn't trash previous values
+exec chezmoi edit-ignore
+grep -count=2 '# edited' $CHEZMOISOURCEDIR/.chezmoiignore
+
+# test that apply works
+exec chezmoi edit-ignore -a
+exists $HOME/file.bat
+rm $HOME/file.bat
+appendline $CHEZMOISOURCEDIR/.chezmoiignore '*.bat'
+exec chezmoi edit-ignore -a
+! exists $HOME/file.bat
+
+-- home/user/.local/share/chezmoi/file.bat --
+batcontents
