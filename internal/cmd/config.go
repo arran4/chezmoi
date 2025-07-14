@@ -193,6 +193,8 @@ type Config struct {
 
 	// Command configurations, not settable in the config file.
 	age             ageCmdConfig
+	aes             aesCmdConfig
+	encryptionCmd   encryptionCmdConfig
 	apply           applyCmdConfig
 	archive         archiveCmdConfig
 	chattr          chattrCmdConfig
@@ -453,6 +455,9 @@ func newConfig(options ...configOption) (*Config, error) {
 		"ejsonDecrypt":                c.ejsonDecryptTemplateFunc,
 		"ejsonDecryptWithKey":         c.ejsonDecryptWithKeyTemplateFunc,
 		"encrypt":                     c.encryptTemplateFunc,
+		"aesDecrypt":                  c.aesDecryptTemplateFunc,
+		"aesEncrypt":                  c.aesEncryptTemplateFunc,
+		"argon2Key":                   c.argon2KeyTemplateFunc,
 		"ensureLinePrefix":            c.ensureLinePrefixTemplateFunc,
 		"eqFold":                      c.eqFoldTemplateFunc,
 		"findExecutable":              c.findExecutableTemplateFunc,
@@ -1297,11 +1302,19 @@ func (c *Config) filterInput(args []string, f func([]byte) ([]byte, error)) erro
 	}
 
 	for _, arg := range args {
-		argAbsPath, err := chezmoi.NewAbsPathFromExtPath(arg, c.homeDirAbsPath)
-		if err != nil {
-			return err
+		var (
+			input []byte
+			err   error
+		)
+		if arg == "-" {
+			input, err = io.ReadAll(c.stdin)
+		} else {
+			var argAbsPath chezmoi.AbsPath
+			argAbsPath, err = chezmoi.NewAbsPathFromExtPath(arg, c.homeDirAbsPath)
+			if err == nil {
+				input, err = c.baseSystem.ReadFile(argAbsPath)
+			}
 		}
-		input, err := c.baseSystem.ReadFile(argAbsPath)
 		if err != nil {
 			return err
 		}
@@ -1764,6 +1777,7 @@ func (c *Config) newRootCmd() (*cobra.Command, error) {
 	rootCmd.SetHelpCommand(c.newHelpCmd())
 	for _, cmd := range []*cobra.Command{
 		c.newAddCmd(),
+		c.newEncryptionCmd(),
 		c.newAgeCmd(),
 		c.newApplyCmd(),
 		c.newArchiveCmd(),

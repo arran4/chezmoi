@@ -145,7 +145,9 @@ nav:
   - Commands:
     - reference/commands/index.md
     - add: reference/commands/add.md
+    - encryption: reference/commands/encryption.md
     - age: reference/commands/age.md
+    - aes: reference/commands/aes.md
     - apply: reference/commands/apply.md
     - archive: reference/commands/archive.md
     - cat: reference/commands/cat.md
@@ -199,6 +201,9 @@ nav:
     - Directives: reference/templates/directives.md
     - Functions:
       - reference/templates/functions/index.md
+      - aesDecrypt: reference/templates/functions/aesDecrypt.md
+      - aesEncrypt: reference/templates/functions/aesEncrypt.md
+      - argon2Key: reference/templates/functions/argon2Key.md
       - comment: reference/templates/functions/comment.md
       - completion: reference/templates/functions/completion.md
       - decrypt: reference/templates/functions/decrypt.md
