@@ -1,0 +1,21 @@
+# test that chezmoi aes encrypt/decrypt round trip with key
+exec chezmoi encryption aes encrypt --key 000102030405060708090a0b0c0d0e0f --output $HOME${/}secret.txt.aes --no-tty $HOME${/}secret.txt
+exec chezmoi encryption aes decrypt --key 000102030405060708090a0b0c0d0e0f --output $HOME${/}secret.txt.dec --no-tty $HOME${/}secret.txt.aes
+cmp $HOME/secret.txt.dec $HOME/secret.txt
+
+# test that chezmoi aes encrypt/decrypt round trip with password
+stdin $HOME/passphrases
+exec chezmoi encryption aes encrypt --password --salt mysalt --output $HOME${/}secret.txt.pwaes --no-tty $HOME${/}secret.txt
+stdin $HOME/passphrase
+exec chezmoi encryption aes decrypt --password --salt mysalt --output $HOME${/}secret.txt.pw.dec --no-tty $HOME${/}secret.txt.pwaes
+cmp $HOME/secret.txt.pw.dec $HOME/secret.txt
+
+-- home/user/passphrases --
+password
+password
+
+-- home/user/passphrase --
+password
+
+-- home/user/secret.txt --
+secret

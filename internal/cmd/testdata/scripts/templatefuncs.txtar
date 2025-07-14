@@ -57,6 +57,18 @@ stdout '^example$'
 exec chezmoi execute-template '{{ "example" | hexEncode }}'
 stdout '^6578616d706c65$'
 
+# test argon2Key template function
+exec chezmoi execute-template '{{ argon2Key "password" "salt" 32 }}'
+stdout '^396c269ca15e98a13620b8cceb48f5b28d684570c5258aaf3a2625653072bee5$'
+
+# test aesEncrypt and aesDecrypt template functions
+exec chezmoi execute-template '{{ aesDecrypt "000102030405060708090a0b0c0d0e0f" (aesEncrypt "000102030405060708090a0b0c0d0e0f" "secret") }}'
+stdout '^secret$'
+
+# test aesEncrypt and aesDecrypt with argon2Key
+exec chezmoi execute-template '{{ aesDecrypt (argon2Key "password" "salt" 32) (aesEncrypt (argon2Key "password" "salt" 32) "secret") }}'
+stdout '^secret$'
+
 # test ioreg template function
 [darwin] exec chezmoi execute-template '{{ index ioreg "IOKitBuildVersion" }}'
 [darwin] stdout 'Darwin Kernel Version'
