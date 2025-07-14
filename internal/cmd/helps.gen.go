@@ -379,6 +379,42 @@ var helps = map[string]*help{
 		example: "" +
 			"  chezmoi edit-config-template",
 	},
+	"edit-ignore": {
+		longHelp: "" +
+			"Description:\n" +
+			"  Edit the .chezmoiignore file.",
+		example: "" +
+			"  chezmoi edit-ignore\n" +
+			"  chezmoi edit-ignore -m\n" +
+			"  chezmoi edit-ignore -a",
+		longFlags: chezmoiset.New(
+			"apply",
+			"make",
+		),
+		shortFlags: chezmoiset.New(
+			"a",
+			"m",
+		),
+	},
+	"edit-template": {
+		longHelp: "" +
+			"Description:\n" +
+			"  Edit templates in the .chezmoitemplates directory using the configured\n" +
+			"  editor. If no templates are specified, the .chezmoitemplates directory\n" +
+			"  itself is opened in the editor.",
+		example: "" +
+			"  chezmoi edit-template foo.tmpl\n" +
+			"  chezmoi edit-template -m bar.tmpl\n" +
+			"  chezmoi edit-template -a baz.tmpl",
+		longFlags: chezmoiset.New(
+			"apply",
+			"make",
+		),
+		shortFlags: chezmoiset.New(
+			"a",
+			"m",
+		),
+	},
 	"encrypt": {
 		longHelp: "" +
 			"Description:\n" +

@@ -213,6 +213,8 @@ type Config struct {
 	state           stateCmdConfig
 	unmanaged       unmanagedCmdConfig
 	upgrade         upgradeCmdConfig
+	editTemplate    editTemplateCmdConfig
+	editIgnore      editIgnoreCmdConfig
 
 	// Common configuration.
 	interactiveTemplateFuncs interactiveTemplateFuncsConfig
@@ -406,6 +408,8 @@ func newConfig(options ...configOption) (*Config, error) {
 		unmanaged: unmanagedCmdConfig{
 			pathStyle: newChoiceFlag(pathStyleRelative, targetPathStyleValues),
 		},
+		editTemplate: editTemplateCmdConfig{},
+		editIgnore:   editIgnoreCmdConfig{},
 
 		// Configuration.
 		fileSystem: vfs.OSFS,
@@ -1782,6 +1786,8 @@ func (c *Config) newRootCmd() (*cobra.Command, error) {
 		c.newEditCmd(),
 		c.newEditConfigCmd(),
 		c.newEditConfigTemplateCmd(),
+		c.newEditTemplateCmd(),
+		c.newEditIgnoreCmd(),
 		c.newEncryptCommand(),
 		c.newExecuteTemplateCmd(),
 		c.newForgetCmd(),
